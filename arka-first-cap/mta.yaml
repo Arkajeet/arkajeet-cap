@@ -1,0 +1,156 @@
+_schema-version: 3.3.0
+ID: arka-first-cap
+description: A simple CAP project.
+version: 1.0.0
+modules:
+- name: arka-first-cap-srv
+  type: nodejs
+  path: gen/srv
+  requires:
+  - name: arka-first-cap-db
+  - name: arka-first-cap-auth
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  parameters:
+    buildpack: nodejs_buildpack
+    instances: 1
+  build-parameters:
+    builder: npm-ci
+- name: arka-first-cap-db-deployer
+  type: hdb
+  path: gen/db
+  requires:
+  - name: arka-first-cap-db
+  parameters:
+    buildpack: nodejs_buildpack
+- name: arka-first-cap-app-content
+  type: com.sap.application.content
+  path: .
+  requires:
+  - name: arka-first-cap-repo-host
+    parameters:
+      content-target: true
+  build-parameters:
+    build-result: resources
+    requires:
+    - artifacts:
+      - project1.zip
+      name: project1
+      target-path: resources/
+    - artifacts:
+      - arkaproject1.zip
+      name: arkaproject1
+      target-path: resources/
+- name: project1
+  type: html5
+  path: app/project1
+  build-parameters:
+    build-result: dist
+    builder: custom
+    commands:
+    - npm install
+    - npm run build:cf
+    supported-platforms: []
+- name: arkaproject1
+  type: html5
+  path: app/project1
+  build-parameters:
+    build-result: dist
+    builder: custom
+    commands:
+    - npm install
+    - npm run build:cf
+    supported-platforms: []
+- name: arka-first-cap-destination-content
+  type: com.sap.application.content
+  requires:
+  - name: arka-first-cap-destination-service
+    parameters:
+      content-target: true
+  - name: arka-first-cap-repo-host
+    parameters:
+      service-key:
+        name: arka-first-cap-repo-host-key
+  - name: arka-first-cap-auth
+    parameters:
+      service-key:
+        name: arka-first-cap-auth-key
+  parameters:
+    content:
+      instance:
+        destinations:
+        - Name: arka_approuter_arka_first_cap_repo_host
+          ServiceInstanceName: arka-first-cap-html5-service
+          ServiceKeyName: arka-first-cap-repo-host-key
+          sap.cloud.service: arka-approuter
+        - Authentication: OAuth2UserTokenExchange
+          Name: arka_approuter_arka_first_cap_auth
+          ServiceInstanceName: arka-first-cap-auth
+          ServiceKeyName: arka-first-cap-auth-key
+          sap.cloud.service: arka-approuter
+        existing_destinations_policy: ignore
+  build-parameters:
+    no-source: true
+resources:
+- name: arka-first-cap-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+- name: arka-first-cap-auth
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      oauth2-configuration:
+        credential-types:
+        - binding-secret
+        - x509
+      tenant-mode: dedicated
+      xsappname: arka-first-cap-${org}-${space}
+    path: ./xs-security.json
+    service: xsuaa
+    service-plan: application
+- name: arka-first-cap-repo-host
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-name: arka-first-cap-html5-service
+    service-plan: app-host
+- name: arka-first-cap-destination-service
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      HTML5Runtime_enabled: true
+      init_data:
+        instance:
+          destinations:
+          - Authentication: NoAuthentication
+            HTML5.DynamicDestination: true
+            HTML5.ForwardAuthToken: true
+            Name: arka-destination-name
+            ProxyType: Internet
+            Type: HTTP
+            URL: ~{srv-api/srv-url}
+          - Authentication: NoAuthentication
+            Name: ui5
+            ProxyType: Internet
+            Type: HTTP
+            URL: https://ui5.sap.com
+          existing_destinations_policy: update
+    service: destination
+    service-name: arka-first-cap-destination-service
+    service-plan: lite
+  requires: 
+  - name: srv-api 
+     
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+  - builder: custom
+    commands:
+    - npm ci
+    - npx cds build --production
